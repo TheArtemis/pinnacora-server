@@ -371,12 +371,17 @@ router.post("/:id/games", requireFirebaseAuth, async (req: Request, res: Respons
     return;
   }
 
+  if (tournament.participants.length !== 2) {
+    res.status(409).json({ error: "A game needs exactly two tournament players." });
+    return;
+  }
+
   const roomCode = await createUniqueRoomCode();
   const game = await prisma.game.create({
     data: {
       tournamentId: tournament.id,
       roomCode,
-      status: GameStatus.PLAYING,
+      status: GameStatus.WAITING,
     },
     include: { winner: true },
   });

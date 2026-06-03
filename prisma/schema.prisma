@@ -75,6 +75,7 @@ model Game {
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   roomCode     String     @unique
   status       GameStatus @default(WAITING)
+  state        Json?
   winnerId     String?
   winner       User?      @relation("GameWinner", fields: [winnerId], references: [id], onDelete: SetNull)
   startedAt    DateTime   @default(now())

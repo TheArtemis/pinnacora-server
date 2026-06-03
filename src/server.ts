@@ -5,9 +5,19 @@ import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import cors from "cors";
-import { GameStatus } from "./generated/prisma/client";
+import { GameStatus, Prisma } from "./generated/prisma/client";
 import { verifyFirebaseToken } from "./auth/firebase";
 import { prisma } from "./db";
+import {
+    discardCard,
+    drawCard,
+    maybeStartGame,
+    restoreGameState,
+    serializeGameStateForPlayer,
+    syncPresence,
+    type GameParticipant,
+    type PersistedGameState,
+} from "./game/engine";
 import tournamentsRouter from "./routes/tournaments";
 import usersRouter from "./routes/users";
 
@@ -43,14 +53,7 @@ const io = new Server(server, {
     }
 });
 
-// temporary in-memory storage
-type GameRoom = {
-    id: string;
-    players: string[];
-    state: "waiting" | "playing" | "finished";
-};
-
-const games: Record<string, GameRoom> = {};
+const gameConnections = new Map<string, Map<string, number>>();
 
 function getSocketToken(socket: Socket) {
     const token = socket.handshake.auth.token;
@@ -59,6 +62,13 @@ function getSocketToken(socket: Socket) {
 
 function getSocketUser(socket: Socket) {
     return (socket.data as { firebaseUser: DecodedIdToken }).firebaseUser;
+}
+
+function getSocketGameData(socket: Socket) {
+    return socket.data as {
+        appUserId?: string;
+        roomCode?: string;
+    };
 }
 
 function getGameIdFromPayload(payload: unknown) {
@@ -76,6 +86,197 @@ function getGameIdFromPayload(payload: unknown) {
     }
 
     return "";
+}
+
+function getCardIdFromPayload(payload: unknown) {
+    if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "cardId" in payload &&
+        typeof payload.cardId === "string"
+    ) {
+        return payload.cardId.trim();
+    }
+
+    return "";
+}
+
+function playerName(user: { displayName: string | null; email: string | null }) {
+    return user.displayName ?? user.email ?? "Player";
+}
+
+function toGameParticipants(
+    participants: Array<{
+        userId: string;
+        user: { displayName: string | null; email: string | null };
+    }>
+): GameParticipant[] {
+    return participants.map((participant) => ({
+        id: participant.userId,
+        name: playerName(participant.user),
+    }));
+}
+
+function incrementConnection(roomCode: string, userId: string) {
+    const roomConnections = gameConnections.get(roomCode) ?? new Map<string, number>();
+    roomConnections.set(userId, (roomConnections.get(userId) ?? 0) + 1);
+    gameConnections.set(roomCode, roomConnections);
+}
+
+function decrementConnection(roomCode: string, userId: string) {
+    const roomConnections = gameConnections.get(roomCode);
+
+    if (!roomConnections) {
+        return;
+    }
+
+    const nextCount = (roomConnections.get(userId) ?? 0) - 1;
+
+    if (nextCount > 0) {
+        roomConnections.set(userId, nextCount);
+    } else {
+        roomConnections.delete(userId);
+    }
+
+    if (roomConnections.size === 0) {
+        gameConnections.delete(roomCode);
+    }
+}
+
+function getConnectedPlayerIds(roomCode: string) {
+    return new Set(gameConnections.get(roomCode)?.keys() ?? []);
+}
+
+function gameStatusFromState(state: PersistedGameState) {
+    if (state.status === "waiting") {
+        return GameStatus.WAITING;
+    }
+
+    if (state.status === "finished") {
+        return GameStatus.FINISHED;
+    }
+
+    return GameStatus.PLAYING;
+}
+
+async function findPersistentGame(roomCode: string) {
+    return prisma.game.findUnique({
+        where: { roomCode },
+        include: {
+            tournament: {
+                include: {
+                    participants: {
+                        include: { user: true },
+                        orderBy: { joinedAt: "asc" },
+                    },
+                },
+            },
+        },
+    });
+}
+
+async function persistGameState(gameId: string, state: PersistedGameState) {
+    await prisma.game.update({
+        where: { id: gameId },
+        data: {
+            status: gameStatusFromState(state),
+            state: state as unknown as Prisma.InputJsonValue,
+        },
+    });
+}
+
+async function emitGameState(roomCode: string, state: PersistedGameState) {
+    const sockets = await io.in(roomCode).fetchSockets();
+
+    for (const roomSocket of sockets) {
+        const viewerPlayerId = (roomSocket.data as { appUserId?: string }).appUserId;
+        roomSocket.emit("game_state", serializeGameStateForPlayer(state, viewerPlayerId));
+    }
+}
+
+async function loadGameState(roomCode: string) {
+    const persistentGame = await findPersistentGame(roomCode);
+
+    if (!persistentGame) {
+        return { error: "Game room was not found." };
+    }
+
+    if (persistentGame.status === GameStatus.FINISHED) {
+        return { error: "This game has already finished." };
+    }
+
+    const participants = toGameParticipants(persistentGame.tournament.participants);
+
+    if (participants.length !== 2) {
+        return { error: "A game needs exactly two tournament players." };
+    }
+
+    const state = maybeStartGame(
+        syncPresence(
+            restoreGameState(persistentGame.state, persistentGame.roomCode, participants),
+            getConnectedPlayerIds(roomCode),
+        ),
+    );
+
+    return { persistentGame, state };
+}
+
+async function handleDrawCard(socket: Socket) {
+    const { appUserId, roomCode } = getSocketGameData(socket);
+
+    if (!appUserId || !roomCode) {
+        socket.emit("game_error", { error: "Join the game before taking a turn." });
+        return;
+    }
+
+    const loaded = await loadGameState(roomCode);
+
+    if ("error" in loaded) {
+        socket.emit("game_error", { error: loaded.error });
+        return;
+    }
+
+    const result = drawCard(loaded.state, appUserId);
+
+    if ("error" in result) {
+        socket.emit("game_error", { error: result.error });
+        return;
+    }
+
+    await persistGameState(loaded.persistentGame.id, result.state);
+    await emitGameState(roomCode, result.state);
+}
+
+async function handleDiscardCard(socket: Socket, payload: unknown) {
+    const { appUserId, roomCode } = getSocketGameData(socket);
+    const cardId = getCardIdFromPayload(payload);
+
+    if (!appUserId || !roomCode) {
+        socket.emit("game_error", { error: "Join the game before taking a turn." });
+        return;
+    }
+
+    if (!cardId) {
+        socket.emit("game_error", { error: "Choose a card to discard." });
+        return;
+    }
+
+    const loaded = await loadGameState(roomCode);
+
+    if ("error" in loaded) {
+        socket.emit("game_error", { error: loaded.error });
+        return;
+    }
+
+    const result = discardCard(loaded.state, appUserId, cardId);
+
+    if ("error" in result) {
+        socket.emit("game_error", { error: result.error });
+        return;
+    }
+
+    await persistGameState(loaded.persistentGame.id, result.state);
+    await emitGameState(roomCode, result.state);
 }
 
 io.use(async (socket, next) => {
@@ -111,57 +312,88 @@ io.on("connection", (socket) => {
         const user = await prisma.user.findUnique({
             where: { firebaseUid: firebaseUser.uid },
         });
-        const persistentGame = await prisma.game.findUnique({
-            where: { roomCode: gameId },
-            include: {
-                tournament: {
-                    include: {
-                        participants: true,
-                    },
-                },
-            },
-        });
 
-        if (persistentGame && user) {
-            const isParticipant = persistentGame.tournament.participants.some(
-                (participant) => participant.userId === user.id,
-            );
-
-            if (!isParticipant) {
-                socket.emit("game_error", { error: "You are not in this tournament." });
-                return;
-            }
-
-            if (persistentGame.status === GameStatus.WAITING) {
-                await prisma.game.update({
-                    where: { id: persistentGame.id },
-                    data: { status: GameStatus.PLAYING },
-                });
-            }
+        if (!user) {
+            socket.emit("game_error", { error: "User has not been created yet." });
+            return;
         }
 
-        socket.join(gameId);
+        const persistentGame = await findPersistentGame(gameId);
 
-        if (!games[gameId]) {
-            games[gameId] = {
-                id: gameId,
-                players: [],
-                state: persistentGame?.status === GameStatus.FINISHED ? "finished" : "waiting"
-            };
+        if (!persistentGame) {
+            socket.emit("game_error", { error: "Game room was not found." });
+            return;
         }
 
-        if (!games[gameId].players.includes(firebaseUser.uid)) {
-            games[gameId].players.push(firebaseUser.uid);
+        if (persistentGame.status === GameStatus.FINISHED) {
+            socket.emit("game_error", { error: "This game has already finished." });
+            return;
         }
 
-        if (games[gameId].players.length >= 2 && games[gameId].state !== "finished") {
-            games[gameId].state = "playing";
+        const isParticipant = persistentGame.tournament.participants.some(
+            (participant) => participant.userId === user.id,
+        );
+
+        if (!isParticipant) {
+            socket.emit("game_error", { error: "You are not in this tournament." });
+            return;
         }
 
-        io.to(gameId).emit("game_state", games[gameId]);
+        if (persistentGame.tournament.participants.length !== 2) {
+            socket.emit("game_error", { error: "A game needs exactly two tournament players." });
+            return;
+        }
+
+        const socketData = getSocketGameData(socket);
+        const alreadyJoined = socketData.roomCode === gameId && socketData.appUserId === user.id;
+
+        if (socketData.roomCode && socketData.appUserId && !alreadyJoined) {
+            socket.leave(socketData.roomCode);
+            decrementConnection(socketData.roomCode, socketData.appUserId);
+        }
+
+        socketData.appUserId = user.id;
+        socketData.roomCode = gameId;
+
+        if (!alreadyJoined) {
+            socket.join(gameId);
+            incrementConnection(gameId, user.id);
+        }
+
+        const participants = toGameParticipants(persistentGame.tournament.participants);
+        const state = maybeStartGame(
+            syncPresence(
+                restoreGameState(persistentGame.state, persistentGame.roomCode, participants),
+                getConnectedPlayerIds(gameId),
+            ),
+        );
+
+        await persistGameState(persistentGame.id, state);
+        await emitGameState(gameId, state);
     });
 
-    socket.on("disconnect", () => {
+    socket.on("draw_card", async () => {
+        await handleDrawCard(socket);
+    });
+
+    socket.on("discard_card", async (payload: unknown) => {
+        await handleDiscardCard(socket, payload);
+    });
+
+    socket.on("disconnect", async () => {
+        const { appUserId, roomCode } = getSocketGameData(socket);
+
+        if (appUserId && roomCode) {
+            decrementConnection(roomCode, appUserId);
+
+            const loaded = await loadGameState(roomCode);
+
+            if (!("error" in loaded)) {
+                await persistGameState(loaded.persistentGame.id, loaded.state);
+                await emitGameState(roomCode, loaded.state);
+            }
+        }
+
         console.log("user disconnected");
     });
 });
