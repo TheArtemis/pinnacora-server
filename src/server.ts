@@ -1,29 +1,45 @@
+import "dotenv/config";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import dotenv from "dotenv";
-
-dotenv.config();
+import usersRouter from "./routes/users";
 
 const app = express();
-app.use(cors());
+
+const clientUrl = process.env.CLIENT_URL;
+const corsOrigin = clientUrl ?? "*";
+
+app.use(cors({ origin: corsOrigin }));
+app.use(express.json());
+
+app.get("/health", (_req, res) => {
+    res.json({ status: "ok" });
+});
+
+app.use("/users", usersRouter);
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "*"
+        origin: corsOrigin
     }
 });
 
 // temporary in-memory storage
-const games: Record<string, any> = {};
+type GameRoom = {
+    id: string;
+    players: string[];
+    state: "waiting" | "playing";
+};
+
+const games: Record<string, GameRoom> = {};
 
 io.on("connection", (socket) => {
     console.log("user connected:", socket.id);
 
-    socket.on("join_game", (gameId) => {
+    socket.on("join_game", (gameId: string) => {
         socket.join(gameId);
 
         if (!games[gameId]) {
@@ -34,7 +50,9 @@ io.on("connection", (socket) => {
             };
         }
 
-        games[gameId].players.push(socket.id);
+        if (!games[gameId].players.includes(socket.id)) {
+            games[gameId].players.push(socket.id);
+        }
 
         io.to(gameId).emit("game_state", games[gameId]);
     });
@@ -43,6 +61,18 @@ io.on("connection", (socket) => {
         console.log("user disconnected");
     });
 });
+
+app.use(
+    (
+        err: unknown,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction
+    ) => {
+        console.error(err);
+        res.status(500).json({ error: "Internal server error." });
+    }
+);
 
 const PORT = process.env.PORT || 3000;
 
