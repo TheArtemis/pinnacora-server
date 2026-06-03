@@ -5,7 +5,10 @@ import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import cors from "cors";
+import { GameStatus } from "./generated/prisma/client";
 import { verifyFirebaseToken } from "./auth/firebase";
+import { prisma } from "./db";
+import tournamentsRouter from "./routes/tournaments";
 import usersRouter from "./routes/users";
 
 const app = express();
@@ -30,6 +33,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/users", usersRouter);
+app.use("/tournaments", tournamentsRouter);
 
 const server = http.createServer(app);
 
@@ -43,7 +47,7 @@ const io = new Server(server, {
 type GameRoom = {
     id: string;
     players: string[];
-    state: "waiting" | "playing";
+    state: "waiting" | "playing" | "finished";
 };
 
 const games: Record<string, GameRoom> = {};
@@ -55,6 +59,23 @@ function getSocketToken(socket: Socket) {
 
 function getSocketUser(socket: Socket) {
     return (socket.data as { firebaseUser: DecodedIdToken }).firebaseUser;
+}
+
+function getGameIdFromPayload(payload: unknown) {
+    if (typeof payload === "string") {
+        return payload.trim();
+    }
+
+    if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "gameId" in payload &&
+        typeof payload.gameId === "string"
+    ) {
+        return payload.gameId.trim();
+    }
+
+    return "";
 }
 
 io.use(async (socket, next) => {
@@ -79,19 +100,62 @@ io.on("connection", (socket) => {
 
     console.log("user connected:", firebaseUser.uid);
 
-    socket.on("join_game", (gameId: string) => {
+    socket.on("join_game", async (payload: unknown) => {
+        const gameId = getGameIdFromPayload(payload);
+
+        if (!gameId) {
+            socket.emit("game_error", { error: "Game room code is required." });
+            return;
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { firebaseUid: firebaseUser.uid },
+        });
+        const persistentGame = await prisma.game.findUnique({
+            where: { roomCode: gameId },
+            include: {
+                tournament: {
+                    include: {
+                        participants: true,
+                    },
+                },
+            },
+        });
+
+        if (persistentGame && user) {
+            const isParticipant = persistentGame.tournament.participants.some(
+                (participant) => participant.userId === user.id,
+            );
+
+            if (!isParticipant) {
+                socket.emit("game_error", { error: "You are not in this tournament." });
+                return;
+            }
+
+            if (persistentGame.status === GameStatus.WAITING) {
+                await prisma.game.update({
+                    where: { id: persistentGame.id },
+                    data: { status: GameStatus.PLAYING },
+                });
+            }
+        }
+
         socket.join(gameId);
 
         if (!games[gameId]) {
             games[gameId] = {
                 id: gameId,
                 players: [],
-                state: "waiting"
+                state: persistentGame?.status === GameStatus.FINISHED ? "finished" : "waiting"
             };
         }
 
         if (!games[gameId].players.includes(firebaseUser.uid)) {
             games[gameId].players.push(firebaseUser.uid);
+        }
+
+        if (games[gameId].players.length >= 2 && games[gameId].state !== "finished") {
+            games[gameId].state = "playing";
         }
 
         io.to(gameId).emit("game_state", games[gameId]);

@@ -13,15 +13,76 @@ datasource db {
   provider = "postgresql"
 }
 
+enum TournamentStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum GameStatus {
+  WAITING
+  PLAYING
+  FINISHED
+}
+
 model User {
-  id            String    @id @default(cuid())
-  firebaseUid   String    @unique
-  email         String?   @unique
-  emailVerified Boolean   @default(false)
-  displayName   String?
-  username      String?   @unique
-  photoUrl      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastLoginAt   DateTime?
+  id                       String                  @id @default(cuid())
+  firebaseUid              String                  @unique
+  email                    String?                 @unique
+  emailVerified            Boolean                 @default(false)
+  displayName              String?
+  username                 String?                 @unique
+  photoUrl                 String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  lastLoginAt              DateTime?
+  createdTournaments       Tournament[]            @relation("TournamentCreator")
+  tournamentParticipations TournamentParticipant[]
+  wonGames                 Game[]                  @relation("GameWinner")
+}
+
+model Tournament {
+  id           String                  @id @default(cuid())
+  name         String
+  joinCode     String                  @unique
+  status       TournamentStatus        @default(ACTIVE)
+  creatorId    String
+  creator      User                    @relation("TournamentCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  participants TournamentParticipant[]
+  games        Game[]
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  completedAt  DateTime?
+
+  @@index([creatorId])
+  @@index([status])
+}
+
+model TournamentParticipant {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt     DateTime   @default(now())
+
+  @@unique([tournamentId, userId])
+  @@index([userId])
+}
+
+model Game {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  roomCode     String     @unique
+  status       GameStatus @default(WAITING)
+  winnerId     String?
+  winner       User?      @relation("GameWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([tournamentId])
+  @@index([winnerId])
+  @@index([status])
 }
