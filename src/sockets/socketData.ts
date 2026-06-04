@@ -50,3 +50,16 @@ export function getCardIdFromPayload(payload: unknown) {
 
     return "";
 }
+
+export function getDiscardPileCountFromPayload(payload: unknown) {
+    if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "count" in payload &&
+        typeof payload.count === "number"
+    ) {
+        return payload.count;
+    }
+
+    return undefined;
+}

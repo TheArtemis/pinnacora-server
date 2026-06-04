@@ -36,6 +36,47 @@ export function drawCard(state: PersistedGameState, playerId: string) {
     };
 }
 
+export function pickUpDiscardPile(state: PersistedGameState, playerId: string, count: number) {
+    if (state.status !== "playing") {
+        return { error: "The game is not currently playable." };
+    }
+
+    if (state.currentPlayerId !== playerId) {
+        return { error: "It is not your turn." };
+    }
+
+    if (state.phase !== "draw") {
+        return { error: "You must discard before picking up more cards." };
+    }
+
+    if (!Number.isInteger(count) || count <= 0) {
+        return { error: "Choose at least one card from the discard pile." };
+    }
+
+    if (count > state.discardPile.length) {
+        return { error: "There are not enough cards in the discard pile." };
+    }
+
+    const pickupStartIndex = state.discardPile.length - count;
+    const pickedUpCards = state.discardPile.slice(pickupStartIndex);
+
+    return {
+        state: {
+            ...state,
+            phase: "discard" as const,
+            discardPile: state.discardPile.slice(0, pickupStartIndex),
+            players: state.players.map((player) =>
+                player.id === playerId
+                    ? {
+                        ...player,
+                        hand: [...player.hand, ...pickedUpCards],
+                    }
+                    : player,
+            ),
+        },
+    };
+}
+
 export function discardCard(state: PersistedGameState, playerId: string, cardId: string) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };
