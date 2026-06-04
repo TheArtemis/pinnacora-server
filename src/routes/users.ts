@@ -2,6 +2,8 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { requireFirebaseAuth, type AuthenticatedRequest } from "../auth/firebase";
 import { prisma } from "../db";
+import { isUniqueConstraintError } from "../db/errors";
+import { optionalString } from "../http/request";
 
 type UserRequestBody = {
   displayName?: unknown;
@@ -11,26 +13,8 @@ type UserRequestBody = {
 
 const router = Router();
 
-function optionalString(value: unknown) {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function optionalUsername(value: unknown) {
   return optionalString(value)?.toLowerCase();
-}
-
-function isUniqueConstraintError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2002"
-  );
 }
 
 router.post("/", requireFirebaseAuth, async (req: Request, res: Response) => {
