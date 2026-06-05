@@ -1,5 +1,5 @@
 import { cardsPerPlayer, createDeck, shuffleDeck } from "./deck";
-import type { Card, GameParticipant, GamePlayer, PersistedGameState } from "./types";
+import type { Card, GameMeld, GameParticipant, GamePlayer, PersistedGameState } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -30,6 +30,23 @@ function isPlayer(value: unknown): value is GamePlayer {
     );
 }
 
+function isMeld(value: unknown): value is GameMeld {
+    if (!isRecord(value)) {
+        return false;
+    }
+
+    return (
+        typeof value.id === "string" &&
+        typeof value.playerId === "string" &&
+        (value.type === "set" || value.type === "sequence") &&
+        isCardArray(value.cards)
+    );
+}
+
+function isMeldArray(value: unknown): value is GameMeld[] {
+    return Array.isArray(value) && value.every(isMeld);
+}
+
 function isPersistedGameState(value: unknown): value is PersistedGameState {
     if (!isRecord(value)) {
         return false;
@@ -44,6 +61,7 @@ function isPersistedGameState(value: unknown): value is PersistedGameState {
         value.players.every(isPlayer) &&
         isCardArray(value.deck) &&
         isCardArray(value.discardPile) &&
+        (value.melds === undefined || isMeldArray(value.melds)) &&
         (value.currentPlayerId === undefined || typeof value.currentPlayerId === "string")
     );
 }
@@ -66,6 +84,7 @@ export function createWaitingGameState(gameId: string, participants: GamePartici
         })),
         deck: [],
         discardPile: [],
+        melds: [],
     };
 }
 
@@ -83,6 +102,7 @@ export function restoreGameState(
     return {
         ...storedState,
         id: gameId,
+        melds: storedState.melds ?? [],
         players: participants.map((participant) => {
             const storedPlayer = playerStates.get(participant.id);
 
@@ -139,6 +159,7 @@ export function maybeStartGame(state: PersistedGameState): PersistedGameState {
         players,
         deck,
         discardPile: [],
+        melds: [],
         currentPlayerId: players[0]?.id,
     };
 }

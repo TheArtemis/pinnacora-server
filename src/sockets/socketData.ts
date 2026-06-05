@@ -51,6 +51,22 @@ export function getCardIdFromPayload(payload: unknown) {
     return "";
 }
 
+export function getCardIdsFromPayload(payload: unknown) {
+    if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "cardIds" in payload &&
+        Array.isArray(payload.cardIds)
+    ) {
+        return payload.cardIds
+            .filter((cardId): cardId is string => typeof cardId === "string")
+            .map((cardId) => cardId.trim())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
 export function getDiscardPileCountFromPayload(payload: unknown) {
     if (
         typeof payload === "object" &&

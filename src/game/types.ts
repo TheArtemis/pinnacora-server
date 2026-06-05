@@ -35,6 +35,15 @@ export type GamePlayer = GameParticipant & {
     connected: boolean;
 };
 
+export type GameMeldType = "set" | "sequence";
+
+export type GameMeld = {
+    id: string;
+    playerId: string;
+    type: GameMeldType;
+    cards: Card[];
+};
+
 export type PersistedGameState = {
     version: 1;
     id: string;
@@ -43,6 +52,7 @@ export type PersistedGameState = {
     players: GamePlayer[];
     deck: Card[];
     discardPile: Card[];
+    melds: GameMeld[];
     currentPlayerId?: string;
 };
 
@@ -61,6 +71,7 @@ export type ClientGameState = {
     players: ClientGamePlayer[];
     deckCount: number;
     discardPile: Card[];
+    melds: GameMeld[];
     currentPlayerId?: string;
     youPlayerId?: string;
 };

@@ -12,6 +12,7 @@ export function serializeGameStateForPlayer(
         youPlayerId: viewerPlayerId,
         deckCount: state.deck.length,
         discardPile: state.discardPile,
+        melds: state.melds,
         players: state.players.map((player) => ({
             id: player.id,
             name: player.name,
