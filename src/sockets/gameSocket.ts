@@ -153,6 +153,34 @@ async function handlePutDownMeld(io: Server, socket: Socket, payload: unknown) {
     await emitGameState(io, roomCode, result.state);
 }
 
+function getHandHoverIndexesFromPayload(payload: unknown) {
+    if (
+        typeof payload !== "object" ||
+        payload === null ||
+        !("cardIndexes" in payload) ||
+        !Array.isArray(payload.cardIndexes)
+    ) {
+        return [];
+    }
+
+    return payload.cardIndexes
+        .filter((cardIndex): cardIndex is number => Number.isInteger(cardIndex) && cardIndex >= 0)
+        .slice(0, 8);
+}
+
+function handleHoverHandCards(socket: Socket, payload: unknown) {
+    const { appUserId, roomCode } = getSocketGameData(socket);
+
+    if (!appUserId || !roomCode) {
+        return;
+    }
+
+    socket.to(roomCode).emit("opponent_hand_hover", {
+        playerId: appUserId,
+        cardIndexes: getHandHoverIndexesFromPayload(payload),
+    });
+}
+
 async function handleJoinGame(io: Server, socket: Socket, payload: unknown) {
     const firebaseUser = getSocketUser(socket);
     const gameId = getGameIdFromPayload(payload);
@@ -225,6 +253,10 @@ async function handleDisconnect(io: Server, socket: Socket) {
     const { appUserId, roomCode } = getSocketGameData(socket);
 
     if (appUserId && roomCode) {
+        socket.to(roomCode).emit("opponent_hand_hover", {
+            playerId: appUserId,
+            cardIndexes: [],
+        });
         decrementConnection(roomCode, appUserId);
 
         const loaded = await loadGameState(roomCode);
@@ -278,6 +310,10 @@ export function registerGameSocketHandlers(io: Server) {
 
         socket.on("discard_card", async (payload: unknown) => {
             await handleDiscardCard(io, socket, payload);
+        });
+
+        socket.on("hover_hand_cards", (payload: unknown) => {
+            handleHoverHandCards(socket, payload);
         });
 
         socket.on("disconnect", async () => {
