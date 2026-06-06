@@ -91,6 +91,7 @@ async function handleDiscardCard(io: Server, socket: Socket, payload: unknown) {
 async function handlePickUpDiscardPile(io: Server, socket: Socket, payload: unknown) {
     const { appUserId, roomCode } = getSocketGameData(socket);
     const count = getDiscardPileCountFromPayload(payload);
+    const cardIds = getCardIdsFromPayload(payload);
 
     if (!appUserId || !roomCode) {
         socket.emit("game_error", { error: "Join the game before taking a turn." });
@@ -109,7 +110,7 @@ async function handlePickUpDiscardPile(io: Server, socket: Socket, payload: unkn
         return;
     }
 
-    const result = pickUpDiscardPile(loaded.state, appUserId, count);
+    const result = pickUpDiscardPile(loaded.state, appUserId, count, cardIds);
 
     if ("error" in result) {
         socket.emit("game_error", { error: result.error });

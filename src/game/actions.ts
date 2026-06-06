@@ -147,7 +147,7 @@ export function drawCard(state: PersistedGameState, playerId: string) {
     };
 }
 
-export function pickUpDiscardPile(state: PersistedGameState, playerId: string, count: number) {
+export function pickUpDiscardPile(state: PersistedGameState, playerId: string, count: number, meldCardIds: string[]) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };
     }
@@ -168,19 +168,63 @@ export function pickUpDiscardPile(state: PersistedGameState, playerId: string, c
         return { error: "There are not enough cards in the discard pile." };
     }
 
+    const uniqueMeldCardIds = new Set(meldCardIds);
+
+    if (uniqueMeldCardIds.size !== meldCardIds.length) {
+        return { error: "Choose each card only once." };
+    }
+
+    const currentPlayer = state.players.find((player) => player.id === playerId);
+
+    if (!currentPlayer) {
+        return { error: "Player is not in this game." };
+    }
+
     const pickupStartIndex = state.discardPile.length - count;
+    const requiredDiscardCard = state.discardPile[pickupStartIndex];
     const pickedUpCards = state.discardPile.slice(pickupStartIndex);
+    const cardsAddedToHand = pickedUpCards.slice(1);
+    const chosenHandCards = meldCardIds
+        .map((cardId) => currentPlayer.hand.find((card) => card.id === cardId))
+        .filter((card): card is Card => Boolean(card));
+
+    if (!requiredDiscardCard) {
+        return { error: "Choose a card from the discard pile to combine." };
+    }
+
+    if (chosenHandCards.length !== meldCardIds.length) {
+        return { error: "Every card in the combination must be in your hand." };
+    }
+
+    const meldCards = [requiredDiscardCard, ...chosenHandCards];
+    const meldType = getMeldType(meldCards);
+
+    if (!meldType) {
+        return { error: "The selected discard card must make a valid combination with cards from your hand." };
+    }
 
     return {
         state: {
             ...state,
             phase: "discard" as const,
             discardPile: state.discardPile.slice(0, pickupStartIndex),
+            melds: [
+                ...state.melds,
+                {
+                    id: `${playerId}-${state.melds.length + 1}-${[requiredDiscardCard.id, ...meldCardIds].join("-")}`,
+                    playerId,
+                    type: meldType,
+                    cards: sortMeldCards(meldCards, meldType),
+                },
+            ],
             players: state.players.map((player) =>
                 player.id === playerId
                     ? {
                         ...player,
-                        hand: [...player.hand, ...pickedUpCards],
+                        hand: [
+                            ...player.hand.filter((card) => !uniqueMeldCardIds.has(card.id)),
+                            ...cardsAddedToHand,
+                        ],
                     }
                     : player,
             ),
