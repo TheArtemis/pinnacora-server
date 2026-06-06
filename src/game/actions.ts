@@ -25,36 +25,69 @@ const suitOrder: Record<CardSuit, number> = {
     joker: 4,
 };
 
-function isSequential(values: number[]) {
-    return values.every((value, index) => index === 0 || value === values[index - 1] + 1);
-}
-
 function sequenceValues(cards: Card[], aceHigh: boolean) {
     return cards
+        .filter((card) => card.rank !== "JOKER")
         .map((card) => (aceHigh && card.rank === "A" ? 14 : rankOrder[card.rank]))
         .sort((left, right) => left - right);
 }
 
+function isJoker(card: Card) {
+    return card.rank === "JOKER" || card.suit === "joker";
+}
+
+function isValidSet(cards: Card[]) {
+    const naturalCards = cards.filter((card) => !isJoker(card));
+
+    if (naturalCards.length === 0 || cards.length > 4) {
+        return false;
+    }
+
+    const rankCount = new Set(naturalCards.map((card) => card.rank)).size;
+    const suitCount = new Set(naturalCards.map((card) => card.suit)).size;
+
+    return rankCount === 1 && suitCount === naturalCards.length;
+}
+
+function canFitSequence(values: number[], totalCards: number) {
+    const [firstValue] = values;
+    const lastValue = values[values.length - 1];
+
+    if (firstValue === undefined || lastValue === undefined) {
+        return false;
+    }
+
+    return lastValue - firstValue + 1 <= totalCards;
+}
+
+function isValidSequence(cards: Card[]) {
+    const naturalCards = cards.filter((card) => !isJoker(card));
+
+    if (naturalCards.length === 0) {
+        return false;
+    }
+
+    const suitCount = new Set(naturalCards.map((card) => card.suit)).size;
+    const rankCount = new Set(naturalCards.map((card) => card.rank)).size;
+
+    if (suitCount !== 1 || rankCount !== naturalCards.length) {
+        return false;
+    }
+
+    return canFitSequence(sequenceValues(naturalCards, false), cards.length) ||
+        canFitSequence(sequenceValues(naturalCards, true), cards.length);
+}
+
 function getMeldType(cards: Card[]): GameMeldType | undefined {
-    if (cards.length < 3 || cards.some((card) => card.rank === "JOKER" || card.suit === "joker")) {
+    if (cards.length < 3) {
         return undefined;
     }
 
-    const rankCount = new Set(cards.map((card) => card.rank)).size;
-    const suitCount = new Set(cards.map((card) => card.suit)).size;
-
-    if (rankCount === 1 && suitCount === cards.length) {
+    if (isValidSet(cards)) {
         return "set";
     }
 
-    if (suitCount !== 1 || rankCount !== cards.length) {
-        return undefined;
-    }
-
-    const lowValues = sequenceValues(cards, false);
-    const highValues = sequenceValues(cards, true);
-
-    return isSequential(lowValues) || isSequential(highValues) ? "sequence" : undefined;
+    return isValidSequence(cards) ? "sequence" : undefined;
 }
 
 function sortMeldCards(cards: Card[], type: GameMeldType) {
@@ -63,9 +96,14 @@ function sortMeldCards(cards: Card[], type: GameMeldType) {
     }
 
     const lowValues = sequenceValues(cards, false);
-    const useAceHigh = !isSequential(lowValues) && isSequential(sequenceValues(cards, true));
+    const highValues = sequenceValues(cards, true);
+    const useAceHigh = !canFitSequence(lowValues, cards.length) && canFitSequence(highValues, cards.length);
 
     return [...cards].sort((left, right) => {
+        if (isJoker(left) || isJoker(right)) {
+            return Number(isJoker(left)) - Number(isJoker(right));
+        }
+
         const leftRank = useAceHigh && left.rank === "A" ? 14 : rankOrder[left.rank];
         const rightRank = useAceHigh && right.rank === "A" ? 14 : rankOrder[right.rank];
 
