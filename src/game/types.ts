@@ -55,6 +55,7 @@ export type PersistedGameState = {
     discardPile: Card[];
     melds: GameMeld[];
     currentPlayerId?: string;
+    winnerId?: string;
 };
 
 export type ClientGamePlayer = {
@@ -75,4 +76,5 @@ export type ClientGameState = {
     melds: GameMeld[];
     currentPlayerId?: string;
     youPlayerId?: string;
+    winnerId?: string;
 };

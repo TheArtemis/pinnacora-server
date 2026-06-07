@@ -60,6 +60,8 @@ export async function persistGameState(gameId: string, state: PersistedGameState
         where: { id: gameId },
         data: {
             status: gameStatusFromState(state),
+            winnerId: state.status === "finished" ? state.winnerId : null,
+            finishedAt: state.status === "finished" ? new Date() : null,
             state: state as unknown as Prisma.InputJsonValue,
         },
     });

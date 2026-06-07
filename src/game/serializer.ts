@@ -20,5 +20,6 @@ export function serializeGameStateForPlayer(
             handCount: player.hand.length,
             hand: player.id === viewerPlayerId ? player.hand : undefined,
         })),
+        winnerId: state.winnerId,
     };
 }

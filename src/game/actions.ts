@@ -227,6 +227,38 @@ function canAddCardToMeld(meld: { type: GameMeldType; cards: Card[] }, card: Car
     return nextMeldType === meld.type;
 }
 
+function hasPinnacora(state: PersistedGameState, playerId: string) {
+    return state.melds.some((meld) => (
+        meld.playerId === playerId &&
+        meld.type === "sequence" &&
+        meld.cards.length >= 7
+    ));
+}
+
+function hasFullPoker(state: PersistedGameState, playerId: string) {
+    return state.melds.some((meld) => (
+        meld.playerId === playerId &&
+        meld.type === "set" &&
+        meld.cards.length >= 4
+    ));
+}
+
+function maybeFinishGame(state: PersistedGameState, playerId: string): PersistedGameState {
+    const player = state.players.find((candidatePlayer) => candidatePlayer.id === playerId);
+
+    if (!player || player.hand.length > 0 || !hasPinnacora(state, playerId) || !hasFullPoker(state, playerId)) {
+        return state;
+    }
+
+    return {
+        ...state,
+        status: "finished",
+        phase: "finished",
+        currentPlayerId: undefined,
+        winnerId: playerId,
+    };
+}
+
 export function drawCard(state: PersistedGameState, playerId: string) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };
@@ -347,7 +379,7 @@ export function pickUpDiscardPile(
         const sortedMeldCards = sortMeldCards(nextMeldCards, targetMeld.type);
 
         return {
-            state: {
+            state: maybeFinishGame({
                 ...baseState,
                 melds: state.melds.map((meld) =>
                     meld.id === targetMeld.id
@@ -358,7 +390,7 @@ export function pickUpDiscardPile(
                         }
                         : meld,
                 ),
-            },
+            }, playerId),
         };
     }
 
@@ -382,7 +414,7 @@ export function pickUpDiscardPile(
         const sortedMeldCards = sortMeldCards(nextMeldCards, nextMeldType);
 
         return {
-            state: {
+            state: maybeFinishGame({
                 ...baseState,
                 melds: state.melds.map((meld) =>
                     meld.id === targetMeld.id
@@ -401,7 +433,7 @@ export function pickUpDiscardPile(
                         }
                         : player,
                 ),
-            },
+            }, playerId),
         };
     }
 
@@ -415,7 +447,7 @@ export function pickUpDiscardPile(
     const sortedMeldCards = sortMeldCards(meldCards, meldType);
 
     return {
-        state: {
+        state: maybeFinishGame({
             ...baseState,
             melds: [
                 ...state.melds,
@@ -427,7 +459,7 @@ export function pickUpDiscardPile(
                     points: calculateMeldPoints(sortedMeldCards, meldType),
                 },
             ],
-        },
+        }, playerId),
     };
 }
 
@@ -475,7 +507,7 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
     const sortedMeldCards = sortMeldCards(chosenCards, meldType);
 
     return {
-        state: {
+        state: maybeFinishGame({
             ...state,
             melds: [
                 ...state.melds,
@@ -495,7 +527,7 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
                     }
                     : player,
             ),
-        },
+        }, playerId),
     };
 }
 
@@ -556,7 +588,7 @@ export function swapMeldJoker(
     const sortedMeldCards = sortMeldCards(nextMeldCards, nextMeldType);
 
     return {
-        state: {
+        state: maybeFinishGame({
             ...state,
             melds: state.melds.map((candidateMeld) =>
                 candidateMeld.id === meldId
@@ -578,7 +610,7 @@ export function swapMeldJoker(
                     }
                     : player,
             ),
-        },
+        }, playerId),
     };
 }
 
@@ -612,7 +644,7 @@ export function discardCard(state: PersistedGameState, playerId: string, cardId:
     const nextPlayer = state.players[(currentPlayerIndex + 1) % state.players.length];
 
     return {
-        state: {
+        state: maybeFinishGame({
             ...state,
             phase: "draw" as const,
             currentPlayerId: nextPlayer?.id,
@@ -625,6 +657,6 @@ export function discardCard(state: PersistedGameState, playerId: string, cardId:
                     }
                     : player,
             ),
-        },
+        }, playerId),
     };
 }

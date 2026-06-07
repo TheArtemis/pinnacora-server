@@ -64,7 +64,8 @@ function isPersistedGameState(value: unknown): value is PersistedGameState {
         isCardArray(value.deck) &&
         isCardArray(value.discardPile) &&
         (value.melds === undefined || isMeldArray(value.melds)) &&
-        (value.currentPlayerId === undefined || typeof value.currentPlayerId === "string")
+        (value.currentPlayerId === undefined || typeof value.currentPlayerId === "string") &&
+        (value.winnerId === undefined || typeof value.winnerId === "string")
     );
 }
 
@@ -170,5 +171,6 @@ export function maybeStartGame(state: PersistedGameState): PersistedGameState {
         discardPile: [],
         melds: [],
         currentPlayerId: players[0]?.id,
+        winnerId: undefined,
     };
 }
