@@ -304,6 +304,89 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
     };
 }
 
+export function swapMeldJoker(
+    state: PersistedGameState,
+    playerId: string,
+    meldId: string,
+    jokerCardId: string,
+    replacementCardId: string,
+) {
+    if (state.status !== "playing") {
+        return { error: "The game is not currently playable." };
+    }
+
+    if (state.currentPlayerId !== playerId) {
+        return { error: "It is not your turn." };
+    }
+
+    if (state.phase !== "discard") {
+        return { error: "Draw or pick up cards before swapping a joker." };
+    }
+
+    const currentPlayer = state.players.find((player) => player.id === playerId);
+
+    if (!currentPlayer) {
+        return { error: "Player is not in this game." };
+    }
+
+    const meld = state.melds.find((candidateMeld) => candidateMeld.id === meldId);
+
+    if (!meld) {
+        return { error: "That table combination was not found." };
+    }
+
+    const jokerCard = meld.cards.find((card) => card.id === jokerCardId);
+
+    if (!jokerCard || !isJoker(jokerCard)) {
+        return { error: "Choose a joker from a table combination." };
+    }
+
+    const replacementCard = currentPlayer.hand.find((card) => card.id === replacementCardId);
+
+    if (!replacementCard) {
+        return { error: "That replacement card is not in your hand." };
+    }
+
+    if (isJoker(replacementCard)) {
+        return { error: "Use a non-joker card to replace a table joker." };
+    }
+
+    const nextMeldCards = meld.cards.map((card) => (card.id === jokerCardId ? replacementCard : card));
+    const nextMeldType = getMeldType(nextMeldCards);
+
+    if (nextMeldType !== meld.type) {
+        return { error: "That card cannot replace this joker in the combination." };
+    }
+
+    const sortedMeldCards = sortMeldCards(nextMeldCards, nextMeldType);
+
+    return {
+        state: {
+            ...state,
+            melds: state.melds.map((candidateMeld) =>
+                candidateMeld.id === meldId
+                    ? {
+                        ...candidateMeld,
+                        cards: sortedMeldCards,
+                        points: calculateMeldPoints(sortedMeldCards, nextMeldType),
+                    }
+                    : candidateMeld,
+            ),
+            players: state.players.map((player) =>
+                player.id === playerId
+                    ? {
+                        ...player,
+                        hand: [
+                            ...player.hand.filter((card) => card.id !== replacementCardId),
+                            jokerCard,
+                        ],
+                    }
+                    : player,
+            ),
+        },
+    };
+}
+
 export function discardCard(state: PersistedGameState, playerId: string, cardId: string) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };

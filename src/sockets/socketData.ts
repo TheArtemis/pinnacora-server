@@ -51,6 +51,32 @@ export function getCardIdFromPayload(payload: unknown) {
     return "";
 }
 
+function getStringFromPayload(payload: unknown, fieldName: string) {
+    if (
+        typeof payload === "object" &&
+        payload !== null &&
+        fieldName in payload
+    ) {
+        const value = (payload as Record<string, unknown>)[fieldName];
+
+        return typeof value === "string" ? value.trim() : "";
+    }
+
+    return "";
+}
+
+export function getMeldIdFromPayload(payload: unknown) {
+    return getStringFromPayload(payload, "meldId");
+}
+
+export function getJokerCardIdFromPayload(payload: unknown) {
+    return getStringFromPayload(payload, "jokerCardId");
+}
+
+export function getReplacementCardIdFromPayload(payload: unknown) {
+    return getStringFromPayload(payload, "replacementCardId");
+}
+
 export function getClientActionIdFromPayload(payload: unknown) {
     if (
         typeof payload === "object" &&

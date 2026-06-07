@@ -11,6 +11,7 @@ import {
     drawCard,
     pickUpDiscardPile,
     putDownMeld,
+    swapMeldJoker,
 } from "../game/engine";
 import {
     emitGameState,
@@ -26,6 +27,9 @@ import {
     getClientActionIdFromPayload,
     getDiscardPileCountFromPayload,
     getGameIdFromPayload,
+    getJokerCardIdFromPayload,
+    getMeldIdFromPayload,
+    getReplacementCardIdFromPayload,
     getSocketGameData,
     getSocketToken,
     getSocketUser,
@@ -81,6 +85,25 @@ async function handlePutDownMeld(io: Server, socket: Socket, payload: unknown) {
     }
 
     await applyQueuedGameAction(io, socket, clientActionId, (state, playerId) => putDownMeld(state, playerId, cardIds));
+}
+
+async function handleSwapMeldJoker(io: Server, socket: Socket, payload: unknown) {
+    const meldId = getMeldIdFromPayload(payload);
+    const jokerCardId = getJokerCardIdFromPayload(payload);
+    const replacementCardId = getReplacementCardIdFromPayload(payload);
+    const clientActionId = getClientActionIdFromPayload(payload);
+
+    if (!meldId || !jokerCardId || !replacementCardId) {
+        socket.emit("game_error", { error: "Choose a table joker and a replacement card.", clientActionId });
+        return;
+    }
+
+    await applyQueuedGameAction(
+        io,
+        socket,
+        clientActionId,
+        (state, playerId) => swapMeldJoker(state, playerId, meldId, jokerCardId, replacementCardId),
+    );
 }
 
 function getHandHoverIndexesFromPayload(payload: unknown) {
@@ -236,6 +259,10 @@ export function registerGameSocketHandlers(io: Server) {
 
         socket.on("put_down_meld", async (payload: unknown) => {
             await handlePutDownMeld(io, socket, payload);
+        });
+
+        socket.on("swap_meld_joker", async (payload: unknown) => {
+            await handleSwapMeldJoker(io, socket, payload);
         });
 
         socket.on("discard_card", async (payload: unknown) => {
