@@ -52,6 +52,21 @@ function isAceSet(cards: Card[]) {
     return cards.length >= 3 && naturalCards.length > 0 && naturalCards.every((card) => card.rank === "A");
 }
 
+function isCompleteMeld(cards: Card[], type: GameMeldType) {
+    if (type === "set") {
+        return cards.length >= 4;
+    }
+
+    const naturalValues = new Set(
+        cards
+            .filter((card) => !isJoker(card))
+            .map((card) => (card.rank === "A" ? 1 : rankOrder[card.rank])),
+    );
+    const jokerCount = cards.filter(isJoker).length;
+
+    return cards.length >= 13 && naturalValues.size + jokerCount >= 13;
+}
+
 export function getMeldCardPoints(card: Card, aceCountsHigh: boolean) {
     if (isJoker(card)) {
         return 0;
@@ -66,6 +81,7 @@ export function getMeldCardPoints(card: Card, aceCountsHigh: boolean) {
 
 export function calculateMeldPoints(cards: Card[], type: GameMeldType) {
     const aceCountsHigh = type === "sequence" ? isAceHighSequence(cards) : isAceSet(cards);
+    const multiplier = isCompleteMeld(cards, type) ? 2 : 1;
 
-    return cards.reduce((total, card) => total + getMeldCardPoints(card, aceCountsHigh), 0);
+    return cards.reduce((total, card) => total + getMeldCardPoints(card, aceCountsHigh) * multiplier, 0);
 }

@@ -75,7 +75,7 @@ function playerName(participant: GameParticipant) {
 function withMeldPoints(meld: GameMeld): GameMeld {
     return {
         ...meld,
-        points: meld.points ?? calculateMeldPoints(meld.cards, meld.type),
+        points: calculateMeldPoints(meld.cards, meld.type),
     };
 }
 
