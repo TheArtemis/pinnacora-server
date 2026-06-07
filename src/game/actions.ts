@@ -215,6 +215,18 @@ function sortMeldCards(cards: Card[], type: GameMeldType) {
     return sortSequenceCards(cards);
 }
 
+type DiscardPilePickupTarget =
+    | { type: "new_meld" }
+    | { type: "extend_meld"; meldId: string }
+    | { type: "swap_joker"; meldId: string; jokerCardId: string };
+
+function canAddCardToMeld(meld: { type: GameMeldType; cards: Card[] }, card: Card) {
+    const nextMeldCards = [...meld.cards, card];
+    const nextMeldType = getMeldType(nextMeldCards);
+
+    return nextMeldType === meld.type;
+}
+
 export function drawCard(state: PersistedGameState, playerId: string) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };
@@ -251,7 +263,13 @@ export function drawCard(state: PersistedGameState, playerId: string) {
     };
 }
 
-export function pickUpDiscardPile(state: PersistedGameState, playerId: string, count: number, meldCardIds: string[]) {
+export function pickUpDiscardPile(
+    state: PersistedGameState,
+    playerId: string,
+    count: number,
+    meldCardIds: string[],
+    pickupTarget: DiscardPilePickupTarget = { type: "new_meld" },
+) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };
     }
@@ -300,6 +318,93 @@ export function pickUpDiscardPile(state: PersistedGameState, playerId: string, c
         return { error: "Every card in the combination must be in your hand." };
     }
 
+    const nextHand = [
+        ...currentPlayer.hand.filter((card) => !uniqueMeldCardIds.has(card.id)),
+        ...cardsAddedToHand,
+    ];
+    const baseState = {
+        ...state,
+        phase: "discard" as const,
+        discardPile: state.discardPile.slice(0, pickupStartIndex),
+        players: state.players.map((player) =>
+            player.id === playerId
+                ? {
+                    ...player,
+                    hand: nextHand,
+                }
+                : player,
+        ),
+    };
+
+    if (pickupTarget.type === "extend_meld") {
+        const targetMeld = state.melds.find((meld) => meld.id === pickupTarget.meldId);
+
+        if (!targetMeld || targetMeld.playerId !== playerId || !canAddCardToMeld(targetMeld, requiredDiscardCard)) {
+            return { error: "That discard card cannot be added to that combination." };
+        }
+
+        const nextMeldCards = [...targetMeld.cards, requiredDiscardCard];
+        const sortedMeldCards = sortMeldCards(nextMeldCards, targetMeld.type);
+
+        return {
+            state: {
+                ...baseState,
+                melds: state.melds.map((meld) =>
+                    meld.id === targetMeld.id
+                        ? {
+                            ...meld,
+                            cards: sortedMeldCards,
+                            points: calculateMeldPoints(sortedMeldCards, meld.type),
+                        }
+                        : meld,
+                ),
+            },
+        };
+    }
+
+    if (pickupTarget.type === "swap_joker") {
+        const targetMeld = state.melds.find((meld) => meld.id === pickupTarget.meldId);
+        const jokerCard = targetMeld?.cards.find((card) => card.id === pickupTarget.jokerCardId);
+
+        if (!targetMeld || !jokerCard || !isJoker(jokerCard) || isJoker(requiredDiscardCard)) {
+            return { error: "That discard card cannot replace this joker." };
+        }
+
+        const nextMeldCards = targetMeld.cards.map((card) =>
+            card.id === pickupTarget.jokerCardId ? requiredDiscardCard : card,
+        );
+        const nextMeldType = getMeldType(nextMeldCards);
+
+        if (nextMeldType !== targetMeld.type || !isMeldInCardOrder(nextMeldCards, nextMeldType)) {
+            return { error: "That discard card cannot replace this joker." };
+        }
+
+        const sortedMeldCards = sortMeldCards(nextMeldCards, nextMeldType);
+
+        return {
+            state: {
+                ...baseState,
+                melds: state.melds.map((meld) =>
+                    meld.id === targetMeld.id
+                        ? {
+                            ...meld,
+                            cards: sortedMeldCards,
+                            points: calculateMeldPoints(sortedMeldCards, nextMeldType),
+                        }
+                        : meld,
+                ),
+                players: baseState.players.map((player) =>
+                    player.id === playerId
+                        ? {
+                            ...player,
+                            hand: [...player.hand, jokerCard],
+                        }
+                        : player,
+                ),
+            },
+        };
+    }
+
     const meldCards = [requiredDiscardCard, ...chosenHandCards];
     const meldType = getMeldType(meldCards);
 
@@ -311,9 +416,7 @@ export function pickUpDiscardPile(state: PersistedGameState, playerId: string, c
 
     return {
         state: {
-            ...state,
-            phase: "discard" as const,
-            discardPile: state.discardPile.slice(0, pickupStartIndex),
+            ...baseState,
             melds: [
                 ...state.melds,
                 {
@@ -324,17 +427,6 @@ export function pickUpDiscardPile(state: PersistedGameState, playerId: string, c
                     points: calculateMeldPoints(sortedMeldCards, meldType),
                 },
             ],
-            players: state.players.map((player) =>
-                player.id === playerId
-                    ? {
-                        ...player,
-                        hand: [
-                            ...player.hand.filter((card) => !uniqueMeldCardIds.has(card.id)),
-                            ...cardsAddedToHand,
-                        ],
-                    }
-                    : player,
-            ),
         },
     };
 }

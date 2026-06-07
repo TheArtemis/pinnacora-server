@@ -26,6 +26,7 @@ import {
     getCardIdsFromPayload,
     getClientActionIdFromPayload,
     getDiscardPileCountFromPayload,
+    getDiscardPilePickupTargetFromPayload,
     getGameIdFromPayload,
     getJokerCardIdFromPayload,
     getMeldIdFromPayload,
@@ -60,6 +61,7 @@ async function handleDiscardCard(io: Server, socket: Socket, payload: unknown) {
 async function handlePickUpDiscardPile(io: Server, socket: Socket, payload: unknown) {
     const count = getDiscardPileCountFromPayload(payload);
     const cardIds = getCardIdsFromPayload(payload);
+    const pickupTarget = getDiscardPilePickupTargetFromPayload(payload);
     const clientActionId = getClientActionIdFromPayload(payload);
 
     if (count === undefined) {
@@ -71,7 +73,7 @@ async function handlePickUpDiscardPile(io: Server, socket: Socket, payload: unkn
         io,
         socket,
         clientActionId,
-        (state, playerId) => pickUpDiscardPile(state, playerId, count, cardIds),
+        (state, playerId) => pickUpDiscardPile(state, playerId, count, cardIds, pickupTarget),
     );
 }
 
