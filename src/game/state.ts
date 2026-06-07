@@ -171,6 +171,5 @@ export function maybeStartGame(state: PersistedGameState): PersistedGameState {
         discardPile: [],
         melds: [],
         currentPlayerId: players[0]?.id,
-        winnerId: undefined,
     };
 }
