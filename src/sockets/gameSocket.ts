@@ -19,9 +19,11 @@ import {
     persistGameState,
     restorePersistentGameState,
 } from "./gameState";
+import { applyQueuedGameAction } from "./gameActionService";
 import {
     getCardIdFromPayload,
     getCardIdsFromPayload,
+    getClientActionIdFromPayload,
     getDiscardPileCountFromPayload,
     getGameIdFromPayload,
     getSocketGameData,
@@ -30,127 +32,55 @@ import {
     setSocketUser,
 } from "./socketData";
 
-async function handleDrawCard(io: Server, socket: Socket) {
-    const { appUserId, roomCode } = getSocketGameData(socket);
-
-    if (!appUserId || !roomCode) {
-        socket.emit("game_error", { error: "Join the game before taking a turn." });
-        return;
-    }
-
-    const loaded = await loadGameState(roomCode);
-
-    if ("error" in loaded) {
-        socket.emit("game_error", { error: loaded.error });
-        return;
-    }
-
-    const result = drawCard(loaded.state, appUserId);
-
-    if ("error" in result) {
-        socket.emit("game_error", { error: result.error });
-        return;
-    }
-
-    await persistGameState(loaded.persistentGame.id, result.state);
-    await emitGameState(io, roomCode, result.state);
+async function handleDrawCard(io: Server, socket: Socket, payload: unknown) {
+    await applyQueuedGameAction(
+        io,
+        socket,
+        getClientActionIdFromPayload(payload),
+        (state, playerId) => drawCard(state, playerId),
+    );
 }
 
 async function handleDiscardCard(io: Server, socket: Socket, payload: unknown) {
-    const { appUserId, roomCode } = getSocketGameData(socket);
     const cardId = getCardIdFromPayload(payload);
-
-    if (!appUserId || !roomCode) {
-        socket.emit("game_error", { error: "Join the game before taking a turn." });
-        return;
-    }
+    const clientActionId = getClientActionIdFromPayload(payload);
 
     if (!cardId) {
-        socket.emit("game_error", { error: "Choose a card to discard." });
+        socket.emit("game_error", { error: "Choose a card to discard.", clientActionId });
         return;
     }
 
-    const loaded = await loadGameState(roomCode);
-
-    if ("error" in loaded) {
-        socket.emit("game_error", { error: loaded.error });
-        return;
-    }
-
-    const result = discardCard(loaded.state, appUserId, cardId);
-
-    if ("error" in result) {
-        socket.emit("game_error", { error: result.error });
-        return;
-    }
-
-    await persistGameState(loaded.persistentGame.id, result.state);
-    await emitGameState(io, roomCode, result.state);
+    await applyQueuedGameAction(io, socket, clientActionId, (state, playerId) => discardCard(state, playerId, cardId));
 }
 
 async function handlePickUpDiscardPile(io: Server, socket: Socket, payload: unknown) {
-    const { appUserId, roomCode } = getSocketGameData(socket);
     const count = getDiscardPileCountFromPayload(payload);
     const cardIds = getCardIdsFromPayload(payload);
-
-    if (!appUserId || !roomCode) {
-        socket.emit("game_error", { error: "Join the game before taking a turn." });
-        return;
-    }
+    const clientActionId = getClientActionIdFromPayload(payload);
 
     if (count === undefined) {
-        socket.emit("game_error", { error: "Choose cards from the discard pile to pick up." });
+        socket.emit("game_error", { error: "Choose cards from the discard pile to pick up.", clientActionId });
         return;
     }
 
-    const loaded = await loadGameState(roomCode);
-
-    if ("error" in loaded) {
-        socket.emit("game_error", { error: loaded.error });
-        return;
-    }
-
-    const result = pickUpDiscardPile(loaded.state, appUserId, count, cardIds);
-
-    if ("error" in result) {
-        socket.emit("game_error", { error: result.error });
-        return;
-    }
-
-    await persistGameState(loaded.persistentGame.id, result.state);
-    await emitGameState(io, roomCode, result.state);
+    await applyQueuedGameAction(
+        io,
+        socket,
+        clientActionId,
+        (state, playerId) => pickUpDiscardPile(state, playerId, count, cardIds),
+    );
 }
 
 async function handlePutDownMeld(io: Server, socket: Socket, payload: unknown) {
-    const { appUserId, roomCode } = getSocketGameData(socket);
     const cardIds = getCardIdsFromPayload(payload);
-
-    if (!appUserId || !roomCode) {
-        socket.emit("game_error", { error: "Join the game before taking a turn." });
-        return;
-    }
+    const clientActionId = getClientActionIdFromPayload(payload);
 
     if (cardIds.length === 0) {
-        socket.emit("game_error", { error: "Choose cards to put down." });
+        socket.emit("game_error", { error: "Choose cards to put down.", clientActionId });
         return;
     }
 
-    const loaded = await loadGameState(roomCode);
-
-    if ("error" in loaded) {
-        socket.emit("game_error", { error: loaded.error });
-        return;
-    }
-
-    const result = putDownMeld(loaded.state, appUserId, cardIds);
-
-    if ("error" in result) {
-        socket.emit("game_error", { error: result.error });
-        return;
-    }
-
-    await persistGameState(loaded.persistentGame.id, result.state);
-    await emitGameState(io, roomCode, result.state);
+    await applyQueuedGameAction(io, socket, clientActionId, (state, playerId) => putDownMeld(state, playerId, cardIds));
 }
 
 function getHandHoverIndexesFromPayload(payload: unknown) {
@@ -296,8 +226,8 @@ export function registerGameSocketHandlers(io: Server) {
             await handleJoinGame(io, socket, payload);
         });
 
-        socket.on("draw_card", async () => {
-            await handleDrawCard(io, socket);
+        socket.on("draw_card", async (payload: unknown) => {
+            await handleDrawCard(io, socket, payload);
         });
 
         socket.on("pick_up_discard_pile", async (payload: unknown) => {

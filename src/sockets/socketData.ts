@@ -51,6 +51,21 @@ export function getCardIdFromPayload(payload: unknown) {
     return "";
 }
 
+export function getClientActionIdFromPayload(payload: unknown) {
+    if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "clientActionId" in payload &&
+        typeof payload.clientActionId === "string"
+    ) {
+        const clientActionId = payload.clientActionId.trim();
+
+        return clientActionId || undefined;
+    }
+
+    return undefined;
+}
+
 export function getCardIdsFromPayload(payload: unknown) {
     if (
         typeof payload === "object" &&
