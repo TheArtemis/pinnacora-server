@@ -1,4 +1,5 @@
 import { cardsPerPlayer, createDeck, shuffleDeck } from "./deck";
+import { calculateMeldPoints } from "./scoring";
 import type { Card, GameMeld, GameParticipant, GamePlayer, PersistedGameState } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -39,7 +40,8 @@ function isMeld(value: unknown): value is GameMeld {
         typeof value.id === "string" &&
         typeof value.playerId === "string" &&
         (value.type === "set" || value.type === "sequence") &&
-        isCardArray(value.cards)
+        isCardArray(value.cards) &&
+        (value.points === undefined || typeof value.points === "number")
     );
 }
 
@@ -68,6 +70,13 @@ function isPersistedGameState(value: unknown): value is PersistedGameState {
 
 function playerName(participant: GameParticipant) {
     return participant.name.trim() || "Player";
+}
+
+function withMeldPoints(meld: GameMeld): GameMeld {
+    return {
+        ...meld,
+        points: meld.points ?? calculateMeldPoints(meld.cards, meld.type),
+    };
 }
 
 export function createWaitingGameState(gameId: string, participants: GameParticipant[]): PersistedGameState {
@@ -102,7 +111,7 @@ export function restoreGameState(
     return {
         ...storedState,
         id: gameId,
-        melds: storedState.melds ?? [],
+        melds: (storedState.melds ?? []).map(withMeldPoints),
         players: participants.map((participant) => {
             const storedPlayer = playerStates.get(participant.id);
 

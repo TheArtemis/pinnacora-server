@@ -1,4 +1,5 @@
 import type { Card, CardRank, CardSuit, GameMeldType, PersistedGameState } from "./types";
+import { calculateMeldPoints } from "./scoring";
 
 const rankOrder: Record<CardRank, number> = {
     A: 1,
@@ -203,6 +204,8 @@ export function pickUpDiscardPile(state: PersistedGameState, playerId: string, c
         return { error: "The selected discard card must make a valid combination with cards from your hand." };
     }
 
+    const sortedMeldCards = sortMeldCards(meldCards, meldType);
+
     return {
         state: {
             ...state,
@@ -214,7 +217,8 @@ export function pickUpDiscardPile(state: PersistedGameState, playerId: string, c
                     id: `${playerId}-${state.melds.length + 1}-${[requiredDiscardCard.id, ...meldCardIds].join("-")}`,
                     playerId,
                     type: meldType,
-                    cards: sortMeldCards(meldCards, meldType),
+                    cards: sortedMeldCards,
+                    points: calculateMeldPoints(sortedMeldCards, meldType),
                 },
             ],
             players: state.players.map((player) =>
@@ -273,6 +277,8 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
 
     const chosenCardIds = new Set(cardIds);
 
+    const sortedMeldCards = sortMeldCards(chosenCards, meldType);
+
     return {
         state: {
             ...state,
@@ -282,7 +288,8 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
                     id: `${playerId}-${state.melds.length + 1}-${cardIds.join("-")}`,
                     playerId,
                     type: meldType,
-                    cards: sortMeldCards(chosenCards, meldType),
+                    cards: sortedMeldCards,
+                    points: calculateMeldPoints(sortedMeldCards, meldType),
                 },
             ],
             players: state.players.map((player) =>

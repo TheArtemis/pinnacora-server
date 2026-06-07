@@ -42,6 +42,7 @@ export type GameMeld = {
     playerId: string;
     type: GameMeldType;
     cards: Card[];
+    points: number;
 };
 
 export type PersistedGameState = {
