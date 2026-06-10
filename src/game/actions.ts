@@ -531,6 +531,64 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
     };
 }
 
+export function attachToMeld(state: PersistedGameState, playerId: string, meldId: string, cardId: string) {
+    if (state.status !== "playing") {
+        return { error: "The game is not currently playable." };
+    }
+
+    if (state.currentPlayerId !== playerId) {
+        return { error: "It is not your turn." };
+    }
+
+    if (state.phase !== "discard") {
+        return { error: "Draw or pick up cards before adding to a combination." };
+    }
+
+    const currentPlayer = state.players.find((player) => player.id === playerId);
+
+    if (!currentPlayer) {
+        return { error: "Player is not in this game." };
+    }
+
+    const card = currentPlayer.hand.find((candidateCard) => candidateCard.id === cardId);
+
+    if (!card) {
+        return { error: "That card is not in your hand." };
+    }
+
+    const meld = state.melds.find((candidateMeld) => candidateMeld.id === meldId);
+
+    if (!meld || meld.playerId !== playerId || !canAddCardToMeld(meld, card)) {
+        return { error: "That card cannot be added to that combination." };
+    }
+
+    const nextMeldCards = [...meld.cards, card];
+    const sortedMeldCards = sortMeldCards(nextMeldCards, meld.type);
+
+    return {
+        state: maybeFinishGame({
+            ...state,
+            melds: state.melds.map((candidateMeld) =>
+                candidateMeld.id === meldId
+                    ? {
+                        ...candidateMeld,
+                        cards: sortedMeldCards,
+                        points: calculateMeldPoints(sortedMeldCards, meld.type),
+                    }
+                    : candidateMeld,
+            ),
+            players: state.players.map((player) =>
+                player.id === playerId
+                    ? {
+                        ...player,
+                        hand: player.hand.filter((candidateCard) => candidateCard.id !== cardId),
+                    }
+                    : player,
+            ),
+        }, playerId),
+    };
+}
+
 export function swapMeldJoker(
     state: PersistedGameState,
     playerId: string,

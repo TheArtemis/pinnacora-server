@@ -11,6 +11,7 @@ import {
     drawCard,
     pickUpDiscardPile,
     putDownMeld,
+    attachToMeld,
     swapMeldJoker,
 } from "../game/engine";
 import {
@@ -87,6 +88,24 @@ async function handlePutDownMeld(io: Server, socket: Socket, payload: unknown) {
     }
 
     await applyQueuedGameAction(io, socket, clientActionId, (state, playerId) => putDownMeld(state, playerId, cardIds));
+}
+
+async function handleAttachToMeld(io: Server, socket: Socket, payload: unknown) {
+    const meldId = getMeldIdFromPayload(payload);
+    const cardId = getCardIdFromPayload(payload);
+    const clientActionId = getClientActionIdFromPayload(payload);
+
+    if (!meldId || !cardId) {
+        socket.emit("game_error", { error: "Choose one of your combinations and a card from your hand.", clientActionId });
+        return;
+    }
+
+    await applyQueuedGameAction(
+        io,
+        socket,
+        clientActionId,
+        (state, playerId) => attachToMeld(state, playerId, meldId, cardId),
+    );
 }
 
 async function handleSwapMeldJoker(io: Server, socket: Socket, payload: unknown) {
@@ -261,6 +280,10 @@ export function registerGameSocketHandlers(io: Server) {
 
         socket.on("put_down_meld", async (payload: unknown) => {
             await handlePutDownMeld(io, socket, payload);
+        });
+
+        socket.on("attach_to_meld", async (payload: unknown) => {
+            await handleAttachToMeld(io, socket, payload);
         });
 
         socket.on("swap_meld_joker", async (payload: unknown) => {
