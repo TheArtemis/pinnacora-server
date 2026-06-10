@@ -5,11 +5,19 @@ const localClientUrls = [
     "http://127.0.0.1:5174",
 ];
 
+const productionClientUrls = ["https://pinnacora-client.vercel.app"];
+
 export function getCorsOrigins() {
     const configuredClientUrls = process.env.CLIENT_URL
         ?.split(",")
         .map((url) => url.trim())
         .filter(Boolean) ?? [];
 
-    return [...new Set([...configuredClientUrls, ...localClientUrls])];
+    return [
+        ...new Set([
+            ...configuredClientUrls,
+            ...productionClientUrls,
+            ...localClientUrls,
+        ]),
+    ];
 }
