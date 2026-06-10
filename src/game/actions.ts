@@ -301,6 +301,10 @@ function resolveDiscardPileNewMeld(
 ):
     | { meldCards: Card[]; meldType: GameMeldType; cardsAddedToHand: Card[] }
     | { error: string } {
+    if (pickedUpCards.length === 0) {
+        return { error: "Choose a card from the discard pile to combine." };
+    }
+
     const meldWithAllPickedCards = [...pickedUpCards, ...chosenHandCards];
     const allPickedMeldType = getMeldType(meldWithAllPickedCards);
 
@@ -312,24 +316,51 @@ function resolveDiscardPileNewMeld(
         };
     }
 
-    const requiredDiscardCard = pickedUpCards[0];
+    const pickedUpCount = pickedUpCards.length;
+    let bestPlan:
+        | { meldCards: Card[]; meldType: GameMeldType; cardsAddedToHand: Card[] }
+        | null = null;
+    let bestDiscardCardsInMeld = -1;
+    let bestMeldSize = -1;
 
-    if (!requiredDiscardCard) {
-        return { error: "Choose a card from the discard pile to combine." };
+    for (let mask = 1; mask < 1 << pickedUpCount; mask += 1) {
+        if ((mask & 1) === 0) {
+            continue;
+        }
+
+        const discardSubset: Card[] = [];
+        const cardsAddedToHand: Card[] = [];
+
+        for (let index = 0; index < pickedUpCount; index += 1) {
+            if (mask & (1 << index)) {
+                discardSubset.push(pickedUpCards[index]);
+            } else {
+                cardsAddedToHand.push(pickedUpCards[index]);
+            }
+        }
+
+        const meldCards = [...discardSubset, ...chosenHandCards];
+        const meldType = getMeldType(meldCards);
+
+        if (!meldType) {
+            continue;
+        }
+
+        if (
+            discardSubset.length > bestDiscardCardsInMeld ||
+            (discardSubset.length === bestDiscardCardsInMeld && meldCards.length > bestMeldSize)
+        ) {
+            bestPlan = { meldCards, meldType, cardsAddedToHand };
+            bestDiscardCardsInMeld = discardSubset.length;
+            bestMeldSize = meldCards.length;
+        }
     }
 
-    const meldCards = [requiredDiscardCard, ...chosenHandCards];
-    const meldType = getMeldType(meldCards);
-
-    if (!meldType) {
+    if (!bestPlan) {
         return { error: "The selected discard card must make a valid combination with cards from your hand." };
     }
 
-    return {
-        meldCards,
-        meldType,
-        cardsAddedToHand: pickedUpCards.slice(1),
-    };
+    return bestPlan;
 }
 
 export function pickUpDiscardPile(
