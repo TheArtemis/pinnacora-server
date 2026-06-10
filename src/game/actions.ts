@@ -295,6 +295,43 @@ export function drawCard(state: PersistedGameState, playerId: string) {
     };
 }
 
+function resolveDiscardPileNewMeld(
+    pickedUpCards: Card[],
+    chosenHandCards: Card[],
+):
+    | { meldCards: Card[]; meldType: GameMeldType; cardsAddedToHand: Card[] }
+    | { error: string } {
+    const meldWithAllPickedCards = [...pickedUpCards, ...chosenHandCards];
+    const allPickedMeldType = getMeldType(meldWithAllPickedCards);
+
+    if (allPickedMeldType) {
+        return {
+            meldCards: meldWithAllPickedCards,
+            meldType: allPickedMeldType,
+            cardsAddedToHand: [],
+        };
+    }
+
+    const requiredDiscardCard = pickedUpCards[0];
+
+    if (!requiredDiscardCard) {
+        return { error: "Choose a card from the discard pile to combine." };
+    }
+
+    const meldCards = [requiredDiscardCard, ...chosenHandCards];
+    const meldType = getMeldType(meldCards);
+
+    if (!meldType) {
+        return { error: "The selected discard card must make a valid combination with cards from your hand." };
+    }
+
+    return {
+        meldCards,
+        meldType,
+        cardsAddedToHand: pickedUpCards.slice(1),
+    };
+}
+
 export function pickUpDiscardPile(
     state: PersistedGameState,
     playerId: string,
@@ -437,26 +474,39 @@ export function pickUpDiscardPile(
         };
     }
 
-    const meldCards = [requiredDiscardCard, ...chosenHandCards];
-    const meldType = getMeldType(meldCards);
+    const resolvedNewMeld = resolveDiscardPileNewMeld(pickedUpCards, chosenHandCards);
 
-    if (!meldType) {
-        return { error: "The selected discard card must make a valid combination with cards from your hand." };
+    if ("error" in resolvedNewMeld) {
+        return resolvedNewMeld;
     }
 
-    const sortedMeldCards = sortMeldCards(meldCards, meldType);
+    const sortedMeldCards = sortMeldCards(resolvedNewMeld.meldCards, resolvedNewMeld.meldType);
+    const nextHandAfterMeld = [
+        ...currentPlayer.hand.filter((card) => !uniqueMeldCardIds.has(card.id)),
+        ...resolvedNewMeld.cardsAddedToHand,
+    ];
 
     return {
         state: maybeFinishGame({
-            ...baseState,
+            ...state,
+            phase: "discard",
+            discardPile: state.discardPile.slice(0, pickupStartIndex),
+            players: state.players.map((player) =>
+                player.id === playerId
+                    ? {
+                        ...player,
+                        hand: nextHandAfterMeld,
+                    }
+                    : player,
+            ),
             melds: [
                 ...state.melds,
                 {
-                    id: `${playerId}-${state.melds.length + 1}-${[requiredDiscardCard.id, ...meldCardIds].join("-")}`,
+                    id: `${playerId}-${state.melds.length + 1}-${resolvedNewMeld.meldCards.map((card) => card.id).join("-")}`,
                     playerId,
-                    type: meldType,
+                    type: resolvedNewMeld.meldType,
                     cards: sortedMeldCards,
-                    points: calculateMeldPoints(sortedMeldCards, meldType),
+                    points: calculateMeldPoints(sortedMeldCards, resolvedNewMeld.meldType),
                 },
             ],
         }, playerId),
