@@ -2,8 +2,11 @@ import "dotenv/config";
 import http from "http";
 import { Server } from "socket.io";
 import { createApp } from "./app";
+import { validateFirebaseConfig } from "./auth/firebase";
 import { getCorsOrigins } from "./config/cors";
 import { registerGameSocketHandlers } from "./sockets/gameSocket";
+
+validateFirebaseConfig();
 
 const app = createApp();
 const server = http.createServer(app);
