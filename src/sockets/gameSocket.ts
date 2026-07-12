@@ -94,11 +94,13 @@ async function handlePutDownMeld(io: Server, socket: Socket, payload: unknown) {
 
 async function handleAttachToMeld(io: Server, socket: Socket, payload: unknown) {
     const meldId = getMeldIdFromPayload(payload);
-    const cardId = getCardIdFromPayload(payload);
+    const cardIds = getCardIdsFromPayload(payload);
+    const fallbackCardId = getCardIdFromPayload(payload);
+    const resolvedCardIds = cardIds.length > 0 ? cardIds : (fallbackCardId ? [fallbackCardId] : []);
     const clientActionId = getClientActionIdFromPayload(payload);
 
-    if (!meldId || !cardId) {
-        socket.emit("game_error", { error: "Choose one of your combinations and a card from your hand.", clientActionId });
+    if (!meldId || resolvedCardIds.length === 0) {
+        socket.emit("game_error", { error: "Choose one of your combinations and cards from your hand.", clientActionId });
         return;
     }
 
@@ -106,7 +108,7 @@ async function handleAttachToMeld(io: Server, socket: Socket, payload: unknown) 
         io,
         socket,
         clientActionId,
-        (state, playerId) => attachToMeld(state, playerId, meldId, cardId),
+        (state, playerId) => attachToMeld(state, playerId, meldId, resolvedCardIds),
     );
 }
 

@@ -225,7 +225,15 @@ type DiscardPilePickupTarget =
     | { type: "swap_joker"; meldId: string; jokerCardId: string };
 
 function canAddCardToMeld(meld: { type: GameMeldType; cards: Card[] }, card: Card) {
-    const nextMeldCards = [...meld.cards, card];
+    return canAddCardsToMeld(meld, [card]);
+}
+
+function canAddCardsToMeld(meld: { type: GameMeldType; cards: Card[] }, cards: Card[]) {
+    if (cards.length === 0) {
+        return false;
+    }
+
+    const nextMeldCards = [...meld.cards, ...cards];
     const nextMeldType = getMeldType(nextMeldCards);
 
     return nextMeldType === meld.type;
@@ -605,7 +613,7 @@ export function putDownMeld(state: PersistedGameState, playerId: string, cardIds
     };
 }
 
-export function attachToMeld(state: PersistedGameState, playerId: string, meldId: string, cardId: string) {
+export function attachToMeld(state: PersistedGameState, playerId: string, meldId: string, cardIds: string[]) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };
     }
@@ -624,20 +632,29 @@ export function attachToMeld(state: PersistedGameState, playerId: string, meldId
         return { error: "Player is not in this game." };
     }
 
-    const card = currentPlayer.hand.find((candidateCard) => candidateCard.id === cardId);
+    const uniqueCardIds = new Set(cardIds);
 
-    if (!card) {
+    if (uniqueCardIds.size !== cardIds.length || cardIds.length === 0) {
+        return { error: "Choose one or more cards from your hand to add." };
+    }
+
+    const chosenCards = cardIds
+        .map((cardId) => currentPlayer.hand.find((candidateCard) => candidateCard.id === cardId))
+        .filter((card): card is Card => Boolean(card));
+
+    if (chosenCards.length !== cardIds.length) {
         return { error: "That card is not in your hand." };
     }
 
     const meld = state.melds.find((candidateMeld) => candidateMeld.id === meldId);
 
-    if (!meld || meld.playerId !== playerId || !canAddCardToMeld(meld, card)) {
+    if (!meld || meld.playerId !== playerId || !canAddCardsToMeld(meld, chosenCards)) {
         return { error: "That card cannot be added to that combination." };
     }
 
-    const nextMeldCards = [...meld.cards, card];
+    const nextMeldCards = [...meld.cards, ...chosenCards];
     const sortedMeldCards = sortMeldCards(nextMeldCards, meld.type);
+    const chosenCardIds = new Set(cardIds);
 
     return {
         state: maybeFinishGame({
@@ -655,7 +672,7 @@ export function attachToMeld(state: PersistedGameState, playerId: string, meldId
                 player.id === playerId
                     ? {
                         ...player,
-                        hand: player.hand.filter((candidateCard) => candidateCard.id !== cardId),
+                        hand: player.hand.filter((candidateCard) => !chosenCardIds.has(candidateCard.id)),
                     }
                     : player,
             ),
