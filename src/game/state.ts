@@ -162,6 +162,7 @@ export function maybeStartGame(state: PersistedGameState): PersistedGameState {
         ...player,
         hand: deck.splice(0, cardsPerPlayer),
     }));
+    const starterDiscardCard = deck.shift();
 
     return {
         ...state,
@@ -169,7 +170,7 @@ export function maybeStartGame(state: PersistedGameState): PersistedGameState {
         phase: "draw",
         players,
         deck,
-        discardPile: [],
+        discardPile: starterDiscardCard ? [starterDiscardCard] : [],
         melds: [],
         currentPlayerId: players[0]?.id,
     };
