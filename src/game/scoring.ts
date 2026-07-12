@@ -172,12 +172,16 @@ function isAcePoker(cards: Card[], type: GameMeldType) {
     return type === "set" && cards.length >= 4 && isAceSet(cards);
 }
 
+function isPinnacola(cards: Card[], type: GameMeldType) {
+    return type === "sequence" && cards.length >= 7 && !cards.some(isJoker);
+}
+
 function isCompleteMeld(cards: Card[], type: GameMeldType) {
     if (type === "set") {
         return cards.length >= 4;
     }
 
-    return cards.length >= 7 && !cards.some(isJoker);
+    return isPinnacola(cards, type);
 }
 
 function getRankPoints(rank: CardRank, aceCountsHigh: boolean) {
