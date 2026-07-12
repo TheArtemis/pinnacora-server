@@ -18,8 +18,10 @@ export function serializeGameStateForPlayer(
             name: player.name,
             connected: player.connected,
             handCount: player.hand.length,
-            hand: player.id === viewerPlayerId ? player.hand : undefined,
+            hand: player.id === viewerPlayerId || state.status === "finished" ? player.hand : undefined,
         })),
+        finishingPlayerId: state.finishingPlayerId,
+        finalScores: state.finalScores,
         winnerId: state.winnerId,
     };
 }

@@ -65,6 +65,7 @@ function isPersistedGameState(value: unknown): value is PersistedGameState {
         isCardArray(value.discardPile) &&
         (value.melds === undefined || isMeldArray(value.melds)) &&
         (value.currentPlayerId === undefined || typeof value.currentPlayerId === "string") &&
+        (value.finishingPlayerId === undefined || typeof value.finishingPlayerId === "string") &&
         (value.winnerId === undefined || typeof value.winnerId === "string")
     );
 }

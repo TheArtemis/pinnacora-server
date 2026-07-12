@@ -45,6 +45,13 @@ export type GameMeld = {
     points: number;
 };
 
+export type GameFinalScore = {
+    meldPoints: number;
+    finishBonus: number;
+    handPenalty: number;
+    total: number;
+};
+
 export type PersistedGameState = {
     version: 1;
     id: string;
@@ -55,6 +62,8 @@ export type PersistedGameState = {
     discardPile: Card[];
     melds: GameMeld[];
     currentPlayerId?: string;
+    finishingPlayerId?: string;
+    finalScores?: Record<string, GameFinalScore>;
     winnerId?: string;
 };
 
@@ -76,5 +85,7 @@ export type ClientGameState = {
     melds: GameMeld[];
     currentPlayerId?: string;
     youPlayerId?: string;
+    finishingPlayerId?: string;
+    finalScores?: Record<string, GameFinalScore>;
     winnerId?: string;
 };

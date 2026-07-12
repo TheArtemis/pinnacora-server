@@ -21,6 +21,8 @@ import {
     persistGameState,
     restorePersistentGameState,
 } from "./gameState";
+import { applyDevStatePatch, parseDevStatePatch } from "../game/devState";
+import { devMode } from "../config/dev";
 import { applyQueuedGameAction } from "./gameActionService";
 import {
     getCardIdFromPayload,
@@ -223,6 +225,44 @@ async function handleJoinGame(io: Server, socket: Socket, payload: unknown) {
     }
 }
 
+async function handleDevSetState(io: Server, socket: Socket, payload: unknown) {
+    if (!devMode) {
+        socket.emit("game_error", { error: "Dev mode is disabled on the server." });
+        return;
+    }
+
+    const patch = parseDevStatePatch(payload);
+
+    if (!patch) {
+        socket.emit("game_error", { error: "Invalid dev state patch." });
+        return;
+    }
+
+    const { appUserId, roomCode } = getSocketGameData(socket);
+
+    if (!appUserId || !roomCode) {
+        socket.emit("game_error", { error: "Join the game before editing dev state." });
+        return;
+    }
+
+    const loaded = await loadGameState(roomCode);
+
+    if ("error" in loaded) {
+        socket.emit("game_error", { error: loaded.error });
+        return;
+    }
+
+    try {
+        const nextState = applyDevStatePatch(loaded.state, patch);
+        await persistGameState(loaded.persistentGame.id, nextState);
+        await emitGameState(io, roomCode, nextState);
+    } catch (error) {
+        socket.emit("game_error", {
+            error: error instanceof Error ? error.message : "Could not apply dev state patch.",
+        });
+    }
+}
+
 async function handleDisconnect(io: Server, socket: Socket) {
     const { appUserId, roomCode } = getSocketGameData(socket);
 
@@ -296,6 +336,10 @@ export function registerGameSocketHandlers(io: Server) {
 
         socket.on("hover_hand_cards", (payload: unknown) => {
             handleHoverHandCards(socket, payload);
+        });
+
+        socket.on("dev_set_state", async (payload: unknown) => {
+            await handleDevSetState(io, socket, payload);
         });
 
         socket.on("disconnect", async () => {

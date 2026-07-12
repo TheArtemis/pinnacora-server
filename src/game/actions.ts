@@ -1,5 +1,5 @@
 import type { Card, CardRank, CardSuit, GameMeldType, PersistedGameState } from "./types";
-import { calculateMeldPoints } from "./scoring";
+import { calculateFinalScores, calculateMeldPoints, determineWinnerId } from "./scoring";
 
 const rankOrder: Record<CardRank, number> = {
     A: 1,
@@ -42,10 +42,14 @@ function sequenceCardValue(card: Card, aceHigh: boolean) {
 }
 
 function isValidSet(cards: Card[]) {
+    if (cards.length > 4) {
+        return false;
+    }
+
     const naturalCards = cards.filter((card) => !isJoker(card));
 
-    if (naturalCards.length === 0 || cards.length > 4) {
-        return false;
+    if (naturalCards.length === 0) {
+        return cards.length >= 3 && cards.every(isJoker);
     }
 
     const rankCount = new Set(naturalCards.map((card) => card.rank)).size;
@@ -227,35 +231,24 @@ function canAddCardToMeld(meld: { type: GameMeldType; cards: Card[] }, card: Car
     return nextMeldType === meld.type;
 }
 
-function hasPinnacora(state: PersistedGameState, playerId: string) {
-    return state.melds.some((meld) => (
-        meld.playerId === playerId &&
-        meld.type === "sequence" &&
-        meld.cards.length >= 7
-    ));
-}
-
-function hasFullPoker(state: PersistedGameState, playerId: string) {
-    return state.melds.some((meld) => (
-        meld.playerId === playerId &&
-        meld.type === "set" &&
-        meld.cards.length >= 4
-    ));
-}
-
 function maybeFinishGame(state: PersistedGameState, playerId: string): PersistedGameState {
     const player = state.players.find((candidatePlayer) => candidatePlayer.id === playerId);
 
-    if (!player || player.hand.length > 0 || !hasPinnacora(state, playerId) || !hasFullPoker(state, playerId)) {
+    if (!player || player.hand.length > 0) {
         return state;
     }
+
+    const finalScores = calculateFinalScores(state.melds, state.players, playerId);
+    const winnerId = determineWinnerId(finalScores, playerId);
 
     return {
         ...state,
         status: "finished",
         phase: "finished",
         currentPlayerId: undefined,
-        winnerId: playerId,
+        finishingPlayerId: playerId,
+        finalScores,
+        winnerId,
     };
 }
 
