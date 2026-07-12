@@ -38,6 +38,10 @@ export function createApp() {
         res.json({ status: "ok" });
     });
 
+    app.get("/keepalive", (_req, res) => {
+        res.sendStatus(204);
+    });
+
     app.use("/users", usersRouter);
     app.use("/tournaments", tournamentsRouter);
 
