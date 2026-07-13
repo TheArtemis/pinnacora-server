@@ -260,6 +260,38 @@ function maybeFinishGame(state: PersistedGameState, playerId: string): Persisted
     };
 }
 
+export function surrenderGame(state: PersistedGameState, playerId: string) {
+    if (state.status !== "playing") {
+        return { error: "The game is not currently playable." };
+    }
+
+    const surrenderingPlayer = state.players.find((player) => player.id === playerId);
+
+    if (!surrenderingPlayer) {
+        return { error: "Player is not in this game." };
+    }
+
+    const opponent = state.players.find((player) => player.id !== playerId);
+
+    if (!opponent) {
+        return { error: "Opponent not found." };
+    }
+
+    const finalScores = calculateFinalScores(state.melds, state.players, opponent.id);
+
+    return {
+        state: {
+            ...state,
+            status: "finished" as const,
+            phase: "finished" as const,
+            currentPlayerId: undefined,
+            finishingPlayerId: opponent.id,
+            finalScores,
+            winnerId: opponent.id,
+        },
+    };
+}
+
 export function drawCard(state: PersistedGameState, playerId: string) {
     if (state.status !== "playing") {
         return { error: "The game is not currently playable." };

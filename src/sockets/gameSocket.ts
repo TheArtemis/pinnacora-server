@@ -13,6 +13,7 @@ import {
     putDownMeld,
     attachToMeld,
     swapMeldJoker,
+    surrenderGame,
 } from "../game/engine";
 import {
     emitGameState,
@@ -110,6 +111,10 @@ async function handleAttachToMeld(io: Server, socket: Socket, payload: unknown) 
         clientActionId,
         (state, playerId) => attachToMeld(state, playerId, meldId, resolvedCardIds),
     );
+}
+
+async function handleSurrender(io: Server, socket: Socket) {
+    await applyQueuedGameAction(io, socket, undefined, (state, playerId) => surrenderGame(state, playerId));
 }
 
 async function handleSwapMeldJoker(io: Server, socket: Socket, payload: unknown) {
@@ -334,6 +339,10 @@ export function registerGameSocketHandlers(io: Server) {
 
         socket.on("discard_card", async (payload: unknown) => {
             await handleDiscardCard(io, socket, payload);
+        });
+
+        socket.on("surrender", async () => {
+            await handleSurrender(io, socket);
         });
 
         socket.on("hover_hand_cards", (payload: unknown) => {
